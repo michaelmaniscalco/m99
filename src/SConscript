@@ -1,0 +1,24 @@
+Import('env', 'install_dir', 'build_executable')
+
+#===============================================================================
+# default list of subdirectories to build
+#===============================================================================
+
+sub_directories = ['library']
+
+
+#===============================================================================
+# invoke SConscript on each subdirectory
+#===============================================================================
+
+for directory_name in sub_directories:
+    env.SConscript('%s/SConscript' % directory_name, {'env' : env, 'install_dir' : install_dir})
+
+
+#===============================================================================
+# build all tests if command line contained 'executable=1'
+#===============================================================================
+
+if build_executable == '1':
+    env.SConscript('executable/SConscript', {'env' : env, 'install_dir' : install_dir})
+
