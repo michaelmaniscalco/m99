@@ -185,24 +185,5 @@ std::int32_t main
     }
 
     return 0;
-/*
-    // decode ...
-    auto startDecode = std::chrono::system_clock::now();
-    auto decodedData = maniscalco::m99_decode(&*encodedData.begin(), &*encodedData.end());
-    auto finishDecode = std::chrono::system_clock::now();
-    auto elapsedDecode = std::chrono::duration_cast<std::chrono::milliseconds>(finishDecode - startDecode).count();
-    std::cout << "Decode speed: " << (((long double)decodedData.size() / (1 << 20)) / ((double)elapsedDecode / 1000)) << " MB/sec" << std::endl;
-
-    // validate
-    auto errorCount = 0;
-    for (std::size_t i = 0; i < input.size(); ++i)
-        if (input[i] != decodedData[i])
-            ++errorCount;
-    if (errorCount)
-        std::cout << errorCount << " decode error(s) detected" << std::endl;
-    else
-        std::cout << "Decode verified" << std::endl;
-*/
-    return 0;
 }
 
