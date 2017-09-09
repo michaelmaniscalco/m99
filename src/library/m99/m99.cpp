@@ -335,7 +335,7 @@ auto maniscalco::m99_encode
         ++cur;
     auto leadingRunLength = std::distance(begin, cur);
     merge(encodeStream, begin, bytesToEncode, leftSize >> 1, symbolList, leadingRunLength);
-    
+
     auto sizeBits = 0;
     while ((1ull << sizeBits) <= bytesToEncode)
         ++sizeBits;
@@ -351,13 +351,12 @@ auto maniscalco::m99_encode
         n -= e.count_;
     }
 
-    auto outputSize = ((headerStream.get_size() + 7) >> 3);
+    auto estimatedOutputSize = ((headerStream.get_size() + 7) >> 3);
     for (auto & dataStream : encodeStream)
-        if (!dataStream.get_size())
-            outputSize += ((dataStream.get_size() + 7) >> 3);
+        estimatedOutputSize += ((dataStream.get_size() + 7) >> 3);
 
     std::vector<std::uint8_t> output;
-    output.reserve(outputSize + (1024));
+    output.reserve(estimatedOutputSize + 8192);
     headerStream >> output;
     for (auto const & dataStream : encodeStream)
         dataStream >> output;

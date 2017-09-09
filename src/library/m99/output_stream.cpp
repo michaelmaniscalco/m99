@@ -41,7 +41,11 @@ std::size_t maniscalco::output_stream::get_size
 (
 ) const
 {
-    return ((output_buffer::maxBit_ * buffers_.size()) + buffer_->get_size());
+    std::size_t size = 0;
+    for (auto const & buffer : buffers_)
+        size += buffer->get_size();
+    size += buffer_->get_size();
+    return size;
 }
 
 
