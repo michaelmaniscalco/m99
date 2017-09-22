@@ -95,7 +95,8 @@ namespace
     (
         input_iter begin,
         input_iter end,
-        char const * outputPath
+        char const * outputPath,
+        std::size_t numThreads
     )
     {
         std::uint32_t sentinelIndex = *(std::uint32_t const *)&*begin;
@@ -108,7 +109,7 @@ namespace
         std::cout << "Decode speed: " << (((long double)decodedData.size() / (1 << 20)) / ((double)elapsedDecode / 1000)) << " MB/sec" << std::endl;
 
         auto startBWT = std::chrono::system_clock::now();
-        maniscalco::reverse_burrows_wheeler_transform(decodedData.begin(), decodedData.end(), sentinelIndex);
+        maniscalco::reverse_burrows_wheeler_transform(decodedData.begin(), decodedData.end(), sentinelIndex, numThreads);
         auto finishBWT = std::chrono::system_clock::now();
         auto elapsedBWT = std::chrono::duration_cast<std::chrono::milliseconds>(finishBWT - startBWT).count();
         std::cout << "UnBWT completed - " << (((long double)decodedData.size() / (1 << 20)) / ((double)elapsedBWT / 1000)) << " MB/sec" << std::endl;
@@ -173,7 +174,7 @@ std::int32_t main
         case 'd':
         {
             auto input = load_file(argValue[2]);
-            decode(input.begin(), input.end(), argValue[3]);
+            decode(input.begin(), input.end(), argValue[3], std::thread::hardware_concurrency());
             break;
         }
 
