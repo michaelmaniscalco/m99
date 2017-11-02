@@ -13,10 +13,12 @@ namespace maniscalco
         std::uint8_t const *
     );
 
-    std::vector<std::uint8_t> m99_decode
+    void m99_decode
     (
         std::uint8_t const *,
-        std::uint8_t const *
+        std::uint8_t const *,
+        std::uint8_t *,
+        std::uint8_t *
     );
 
 } // namespace maniscalco
