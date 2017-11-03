@@ -69,7 +69,8 @@ namespace maniscalco
 	        uint8_t *,
             uint8_t *,
             int32_t,
-            int32_t
+            int32_t,
+            std::array<std::int32_t, 256> const &
         );
  
     protected:
@@ -143,9 +144,7 @@ namespace maniscalco
         (
             uint8_t const *,
             uint8_t const *,
-            int32_t (&)[0x10000],
-            int32_t (&)[0x10000],
-            int32_t (&)[0x10000]
+            std::array<int32_t *, 4>
         );
 
         template <typename F, typename ... argument_types>
@@ -192,7 +191,7 @@ namespace maniscalco
         (
             uint8_t const *,
             uint8_t const *,
-            int32_t (&)[0x10000]
+            int32_t *
         );
 
         struct ibwt_partition_info
@@ -337,7 +336,8 @@ namespace maniscalco
         input_iter,
         input_iter,
         int32_t,
-        int32_t = 1
+        int32_t,
+        std::array<std::int32_t, 256> const &
     );
 
 } // namespace maniscalco
@@ -384,8 +384,9 @@ void maniscalco::reverse_burrows_wheeler_transform
     input_iter begin,
     input_iter end,
     int32_t sentinelIndex,
-    int32_t numThreads
+    int32_t numThreads,
+    std::array<std::int32_t, 256> const & symbolCount
 )
 {
-    msufsort::reverse_burrows_wheeler_transform((uint8_t *)&*begin, (uint8_t *)&*end, sentinelIndex, numThreads);
+    msufsort::reverse_burrows_wheeler_transform((uint8_t *)&*begin, (uint8_t *)&*end, sentinelIndex, numThreads, symbolCount);
 }

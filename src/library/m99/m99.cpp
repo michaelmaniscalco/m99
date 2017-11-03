@@ -12,7 +12,7 @@ namespace
     struct symbol_info
     {
         std::uint8_t    symbol_;
-        std::uint32_t     count_;
+        std::uint32_t   count_;
     };
 
     struct tiny_encode_table_entry_type
@@ -159,7 +159,7 @@ namespace
         std::uint8_t * decodedData,
         std::uint32_t totalSize,
         std::uint32_t leftSize,
-        symbol_info const (& parentSymbolInfo)[256] 
+        symbol_info const * parentSymbolInfo
     )
     {
         if (parentSymbolInfo[0].count_ >= totalSize)
@@ -209,7 +209,7 @@ namespace
         }
         auto n = leftSizeRemaining + rightSizeRemaining;
         symbol_info * c = result[(leftSizeRemaining == 0)];
-        while (n)
+        while (n > 0)
         {
             n -= currentSymbolInfo->count_;
             *c++ = *currentSymbolInfo++;
@@ -302,7 +302,7 @@ namespace
         }
         auto n = partitionSize_.size_.left_ + partitionSize_.size_.right_;
         symbol_info const * c = current[(partitionSize_.size_.left_ == 0)];
-        while (n)
+        while (n > 0)
         {
             n -= c->count_;
             *resultCurrent++ = *c++;
@@ -365,7 +365,8 @@ void maniscalco::m99_decode
     std::uint8_t const * inputBegin,
     std::uint8_t const * inputEnd,
     std::uint8_t * outputBegin,
-    std::uint8_t * outputEnd
+    std::uint8_t * outputEnd,
+    std::int32_t * symbolCount
 )
 {
     // load the encoded header stream
@@ -386,13 +387,13 @@ void maniscalco::m99_decode
     symbol_info symbolInfo[256];
     auto bytesToDecode = std::distance(outputBegin, outputEnd);
     auto n = bytesToDecode;
-    for (auto & e : symbolInfo)
+    for (auto i = 0; i < 256; ++i)
     {
         if (n == 0)
             break;
-        e.symbol_ = headerStream.pop(8);
-        e.count_ = unpack_value(&headerStream, n, n, n);
-        n -= e.count_;
+        symbolInfo[i].symbol_ = headerStream.pop(8);
+        symbolCount[symbolInfo[i].symbol_] = symbolInfo[i].count_ = unpack_value(&headerStream, n, n, n);
+        n -= symbolInfo[i].count_;
     }
     std::uint32_t leftSize = 1;
     while (leftSize < bytesToDecode)
