@@ -365,8 +365,7 @@ void maniscalco::m99_decode
     std::uint8_t const * inputBegin,
     std::uint8_t const * inputEnd,
     std::uint8_t * outputBegin,
-    std::uint8_t * outputEnd,
-    std::int32_t * symbolCount
+    std::uint8_t * outputEnd
 )
 {
     // load the encoded header stream
@@ -392,7 +391,7 @@ void maniscalco::m99_decode
         if (n == 0)
             break;
         symbolInfo[i].symbol_ = headerStream.pop(8);
-        symbolCount[symbolInfo[i].symbol_] = symbolInfo[i].count_ = unpack_value(&headerStream, n, n, n);
+        symbolInfo[i].count_ = unpack_value(&headerStream, n, n, n);
         n -= symbolInfo[i].count_;
     }
     std::uint32_t leftSize = 1;

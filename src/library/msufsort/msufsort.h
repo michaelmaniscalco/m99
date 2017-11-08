@@ -69,8 +69,7 @@ namespace maniscalco
 	        uint8_t *,
             uint8_t *,
             int32_t,
-            int32_t,
-            std::array<std::int32_t, 256> const &
+            int32_t
         );
  
     protected:
@@ -336,8 +335,7 @@ namespace maniscalco
         input_iter,
         input_iter,
         int32_t,
-        int32_t,
-        std::array<std::int32_t, 256> const &
+        int32_t = 1
     );
 
 } // namespace maniscalco
@@ -384,9 +382,8 @@ void maniscalco::reverse_burrows_wheeler_transform
     input_iter begin,
     input_iter end,
     int32_t sentinelIndex,
-    int32_t numThreads,
-    std::array<std::int32_t, 256> const & symbolCount
+    int32_t numThreads
 )
 {
-    msufsort::reverse_burrows_wheeler_transform((uint8_t *)&*begin, (uint8_t *)&*end, sentinelIndex, numThreads, symbolCount);
+    msufsort::reverse_burrows_wheeler_transform((uint8_t *)&*begin, (uint8_t *)&*end, sentinelIndex, numThreads);
 }

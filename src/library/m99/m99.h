@@ -18,8 +18,7 @@ namespace maniscalco
         std::uint8_t const *,
         std::uint8_t const *,
         std::uint8_t *,
-        std::uint8_t *,
-        std::int32_t *
+        std::uint8_t *
     );
 
 } // namespace maniscalco

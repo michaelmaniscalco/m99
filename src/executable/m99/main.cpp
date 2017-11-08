@@ -129,11 +129,6 @@ namespace
         while (bytesToDecode > 0)
         {
             std::vector<std::thread> decodeThreads;
-            std::array<int32_t, 256> decodeSymbolCount[numThreads];
-            for (auto i = 0; i < numThreads; ++i)
-                for (auto & e : decodeSymbolCount[i])
-                    e = 0;
-
             for (uint32_t i = 0; i < numThreads; ++i)
             {
                 if (blockSize > bytesToDecode)
@@ -142,9 +137,9 @@ namespace
                 {
                     std::uint32_t encodedSize = *(std::uint32_t const *)inputCurrent;
                     inputCurrent += sizeof(encodedSize);
-                    std::thread t([](std::uint8_t const * inputBegin, std::uint8_t const * inputEnd, std::uint8_t * outputBegin, std::uint8_t * outputEnd, std::int32_t * symbolCount)
-                            {maniscalco::m99_decode(inputBegin, inputEnd, outputBegin, outputEnd, symbolCount);}, 
-                            inputCurrent, inputCurrent + encodedSize, outputCurrent, outputCurrent + blockSize, decodeSymbolCount[i].data());
+                    std::thread t([](std::uint8_t const * inputBegin, std::uint8_t const * inputEnd, std::uint8_t * outputBegin, std::uint8_t * outputEnd)
+                            {maniscalco::m99_decode(inputBegin, inputEnd, outputBegin, outputEnd);}, 
+                            inputCurrent, inputCurrent + encodedSize, outputCurrent, outputCurrent + blockSize);
                     decodeThreads.push_back(std::move(t));
                     inputCurrent += encodedSize;
                     outputCurrent += blockSize;
@@ -153,12 +148,8 @@ namespace
             }
             for (auto & e : decodeThreads)
                 e.join();
-
-            for (uint32_t i = 0; i < numThreads; ++i)
-                for (auto j = 0; j < 256; ++j)
-                    symbolCount[j] += decodeSymbolCount[i][j];
         }
-        maniscalco::reverse_burrows_wheeler_transform(decodedData.begin(), decodedData.end(), sentinelIndex, numThreads, symbolCount);
+        maniscalco::reverse_burrows_wheeler_transform(decodedData.begin(), decodedData.end(), sentinelIndex, numThreads);
         
         // create the output stream
         std::ofstream outStream(outputPath, std::ios_base::out | std::ios_base::binary);
