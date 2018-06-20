@@ -3,6 +3,7 @@ novel high throughput entropy encoder for BWT data
 
 
 ======================================================================
+
 To compile, install scons (or write your own makefile):
 
 on Ubuntu: sudo apt-get install scons
