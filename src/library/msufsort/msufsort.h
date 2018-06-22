@@ -76,19 +76,27 @@ namespace maniscalco
 
     private:
 
+        using suffix_value = std::uint32_t;
+
         // flags used in ISA
-        static int32_t constexpr is_tandem_repeat_flag  = 0x80000000;
-        static int32_t constexpr is_bstar_suffix_flag   = 0x40000000;
-        static int32_t constexpr isa_flag_mask = (is_tandem_repeat_flag | is_bstar_suffix_flag);        
-        static int32_t constexpr isa_index_mask = ~isa_flag_mask;
+        static std::int32_t constexpr is_induced_sort = 0x40000000;
+        static std::int32_t constexpr is_tandem_repeat_length  = 0x80000000;
+        static std::int32_t constexpr isa_flag_mask = is_induced_sort | is_tandem_repeat_length;  
+        static std::int32_t constexpr isa_index_mask = ~isa_flag_mask;
 
         // flags used in SA
-        static int32_t constexpr preceding_suffix_is_type_a_flag = 0x80000000;
-        static int32_t constexpr sa_index_mask = ~preceding_suffix_is_type_a_flag;
-        static int32_t constexpr suffix_is_unsorted_b_type = sa_index_mask;
-        static int32_t constexpr min_length_before_tandem_repeat_check = (int32_t)(2 + sizeof(uint64_t) + sizeof(uint64_t));
+        static std::int32_t constexpr preceding_suffix_is_type_a_flag = 0x80000000;
+        static std::int32_t constexpr mark_isa_when_sorted = 0x40000000;
+        static std::int32_t constexpr sa_index_mask = ~(preceding_suffix_is_type_a_flag | mark_isa_when_sorted);
+        static std::int32_t constexpr suffix_is_unsorted_b_type = sa_index_mask;
 
         static constexpr int32_t insertion_sort_threshold = 16;
+
+        enum class tandem_repeat_setting : bool
+        {
+            not_possible    = false,
+            possible        = true
+        };
 
         enum suffix_type 
         {
@@ -99,13 +107,52 @@ namespace maniscalco
 
         struct partition_info
         {
-            int32_t size_;
-            int32_t matchLength_;
-            uint64_t startingPattern_;
-            bool     potentialTandemRepeats_;
+            partition_info
+            (
+                std::int32_t size, 
+                std::int32_t matchLength, 
+                suffix_value startingPattern, 
+                suffix_value endingPattern,
+                tandem_repeat_setting potentialTandemRepeats
+            ):
+                size_(size),
+                matchLength_(matchLength),
+                startingPattern_(startingPattern),
+                endingPattern_(endingPattern),
+                potentialTandemRepeats_(potentialTandemRepeats)
+            {
+            }
+
+            std::int32_t                 size_;
+            std::int32_t                 matchLength_;
+            suffix_value                startingPattern_;
+            suffix_value                endingPattern_;
+            tandem_repeat_setting   potentialTandemRepeats_;
         };
 
-        uint64_t get_value
+        struct tandem_repeat_info
+        {
+            tandem_repeat_info
+            (
+                suffix_index * partitionBegin,
+                suffix_index * partitionEnd,
+                std::int32_t numTerminators,
+                std::int32_t tandemRepeatLength
+            ):
+                partitionBegin_(partitionBegin),
+                partitionEnd_(partitionEnd),
+                numTerminators_(numTerminators),
+                tandemRepeatLength_(tandemRepeatLength)
+            {
+            }
+
+            suffix_index *  partitionBegin_;
+            suffix_index *  partitionEnd_;
+            std::int32_t    numTerminators_;
+            std::int32_t    tandemRepeatLength_;
+        };
+
+        suffix_value get_value
         (
             uint8_t const *,
             suffix_index
@@ -118,9 +165,17 @@ namespace maniscalco
 
         bool compare_suffixes
         (
-            uint8_t const *,
+            std::uint8_t const *,
             suffix_index,
             suffix_index
+        ) const;
+
+        int compare_suffixes
+        (
+            std::uint8_t const *,
+            suffix_index,
+            suffix_index,
+            std::size_t
         ) const;
 
         void insertion_sort
@@ -131,12 +186,27 @@ namespace maniscalco
             uint64_t
         );
 
+        void multikey_insertion_sort
+        (
+            suffix_index *,
+            suffix_index *,
+            std::int32_t,
+            suffix_value,
+            suffix_value,
+            std::vector<partition_info> &,
+            std::vector<tandem_repeat_info> &,
+            tandem_repeat_setting
+        );
+
         bool tandem_repeat_sort
         (
             suffix_index *,
             suffix_index *,
-            int32_t,
-            uint64_t
+            std::int32_t,
+            suffix_value,
+            suffix_value,
+            std::vector<partition_info> &,
+            std::vector<tandem_repeat_info> &
         );
 
         void count_suffixes
@@ -182,8 +252,11 @@ namespace maniscalco
         (
             suffix_index *,
             suffix_index *,
-            int32_t,
-            uint64_t
+            std::int32_t,
+            suffix_value,
+            suffix_value,
+            std::vector<partition_info> &,
+            std::vector<tandem_repeat_info> &
         );
 
         void initial_two_byte_radix_sort
@@ -193,8 +266,46 @@ namespace maniscalco
             int32_t *
         );
 
+        tandem_repeat_setting has_potential_tandem_repeats
+        (
+            std::int32_t,
+            suffix_value,
+            std::array<suffix_value, 2> const &
+        ) const;
+
+        void complete_tandem_repeats
+        (
+            std::vector<tandem_repeat_info> &
+        );
+
+        void complete_tandem_repeat
+        (
+            suffix_index *,
+            suffix_index *,
+            std::int32_t,
+            std::int32_t
+        );
+
         struct ibwt_partition_info
         {
+            ibwt_partition_info(){}
+
+            ibwt_partition_info
+            (
+                suffix_index startIndex,
+                suffix_index currentIndex,
+                std::uint8_t * beginOutput,
+                std::uint8_t * currentOutput,
+                std::uint8_t * endOutput
+            ):
+                startIndex_(startIndex),
+                currentIndex_(currentIndex),
+                beginOutput_(beginOutput),
+                currentOutput_(currentOutput),
+                endOutput_(endOutput)
+            {
+            }
+
             suffix_index startIndex_;
             suffix_index currentIndex_;
             std::uint8_t * beginOutput_;
@@ -212,7 +323,7 @@ namespace maniscalco
 
         suffix_index    getValueMaxIndex_;
 
-        uint8_t         copyEnd_[sizeof(uint64_t) << 1];
+        uint8_t         copyEnd_[sizeof(suffix_value) << 1];
 
         suffix_index *  suffixArrayBegin_;
 
@@ -305,6 +416,7 @@ namespace maniscalco
             bool volatile terminate_;
             bool volatile taskCompleted_;
         };
+
 
         std::unique_ptr<worker_thread []> workerThreads_;
 
