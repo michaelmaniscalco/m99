@@ -63,6 +63,11 @@ namespace
         auto startTime = std::chrono::system_clock::now();
         auto sentinelIndex = maniscalco::forward_burrows_wheeler_transform(begin, end, numThreads);
 
+#ifdef ENABLE_EXPERIMENTAL
+    // experimental mode produces output files.  encoder should be single threaded
+    // for experimental mode.
+    numThreads = 1;
+#endif
         std::vector<std::thread> encodingThreads;
         std::vector<std::vector<std::uint8_t>> encodeBuffers(numThreads);
         std::uint32_t bytesPerBlock = ((inputSize + numThreads - 1) / numThreads);
@@ -81,6 +86,19 @@ namespace
         for (auto & e : encodingThreads)
             e.join();
 
+        auto finishTime = std::chrono::system_clock::now();
+        auto elapsedOverallEncode = std::chrono::duration_cast<std::chrono::milliseconds>(finishTime - startTime).count();
+
+        std::size_t outputSize = 0;
+        outputSize = (sizeof(inputSize) + sizeof(sentinelIndex) + sizeof(bytesPerBlock));
+        for (auto const & e : encodeBuffers)
+        {
+            outputSize += e.size();
+            outputSize += sizeof(std::uint32_t);  
+        }
+        std::cout << "compressed: " << inputSize << " -> " << outputSize << " bytes.  ratio = " << (((long double)outputSize / inputSize) * 100) << "%" << std::endl;
+        std::cout << "Elapsed time: " << ((long double)elapsedOverallEncode / 1000) << " seconds : " <<  (((long double)inputSize / (1 << 20)) / ((double)elapsedOverallEncode / 1000)) << " MB/sec" << std::endl;
+
         outStream.write((char *)&inputSize, sizeof(inputSize));
         outStream.write((char *)&sentinelIndex, sizeof(sentinelIndex));
         outStream.write((char *)&bytesPerBlock, sizeof(bytesPerBlock));
@@ -90,13 +108,7 @@ namespace
             outStream.write((char const *)&encodedSize, sizeof(encodedSize));
             outStream.write((char const *)&*e.begin(), encodedSize);
         }
-        std::size_t outputSize = outStream.tellp();
         outStream.close();
-
-        auto finishTime = std::chrono::system_clock::now();
-        auto elapsedOverallEncode = std::chrono::duration_cast<std::chrono::milliseconds>(finishTime - startTime).count();
-        std::cout << "compressed: " << inputSize << " -> " << outputSize << " bytes.  ratio = " << (((long double)outputSize / inputSize) * 100) << "%" << std::endl;
-        std::cout << "Elapsed time: " << ((long double)elapsedOverallEncode / 1000) << " seconds : " <<  (((long double)inputSize / (1 << 20)) / ((double)elapsedOverallEncode / 1000)) << " MB/sec" << std::endl;
     }
 
 
@@ -150,6 +162,10 @@ namespace
                 e.join();
         }
         maniscalco::reverse_burrows_wheeler_transform(decodedData.begin(), decodedData.end(), sentinelIndex, numThreads);
+
+        auto finishTime = std::chrono::system_clock::now();
+        auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(finishTime - startTime).count();
+        std::cout << "Elapsed time: " << ((long double)elapsedTime / 1000) << " seconds : " <<  (((long double)originalSize / (1 << 20)) / ((double)elapsedTime / 1000)) << " MB/sec" << std::endl;
         
         // create the output stream
         std::ofstream outStream(outputPath, std::ios_base::out | std::ios_base::binary);
@@ -160,10 +176,6 @@ namespace
         }
         outStream.write((char const *)&*decodedData.begin(), decodedData.size());
         outStream.close();
-
-        auto finishTime = std::chrono::system_clock::now();
-        auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(finishTime - startTime).count();
-        std::cout << "Elapsed time: " << ((long double)elapsedTime / 1000) << " seconds : " <<  (((long double)originalSize / (1 << 20)) / ((double)elapsedTime / 1000)) << " MB/sec" << std::endl;
     }
 
 

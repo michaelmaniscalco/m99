@@ -1,16 +1,56 @@
 #include "./m99.h"
 #include "./input_stream.h"
 #include "./output_stream.h"
-
-
+#include <fstream>
+#include <iostream>
 
 
 namespace
 {
+
+
+    #ifdef ENABLE_EXPERIMENTAL
+    namespace experimental
+    {
+
+        std::ofstream experimentalOutputStreams_[256];
+
+        void initialize_experimental_output_streams
+        (
+        )
+        {
+            for (auto i = 0; i < 256; ++i)
+            {
+                std::string streamName = "./m99.experimental.";
+                streamName += std::to_string(i);
+                streamName += ".dat";
+                experimentalOutputStreams_[i] = std::ofstream(streamName.c_str(), std::ios_base::out | std::ios_base::binary);
+            }
+        }
+
+
+        void finalize_experiemental_output_streams
+        (
+        )
+        {
+            for (auto i = 0; i < 256; ++i)
+            {
+                experimentalOutputStreams_[i].flush();
+                experimentalOutputStreams_[i].close();
+            }
+        }
+
+    }
+    #endif
+
+
+
     using namespace maniscalco;
 
     struct symbol_info
     {
+        symbol_info(){}
+        symbol_info(std::uint8_t symbol, std::uint32_t count):symbol_(symbol), count_(count){}
         std::uint8_t    symbol_;
         std::uint32_t   count_;
     };
@@ -76,7 +116,7 @@ namespace
 
 
     //======================================================================================================================
-    inline void pack_value
+    force_inline void pack_value
     (
         output_stream * dataStream,
         std::uint32_t left,
@@ -85,12 +125,15 @@ namespace
         std::uint32_t maxRight
     )
     {
-        if (total < 8)
-        {
-            auto const & encTableEntry = tinyEncodeTable[(maxLeft >= 8) ? 7 : maxLeft][(maxRight >= 8) ? 7 : maxRight][left][total];
-            dataStream->push(encTableEntry.value_, encTableEntry.length_);
-            return;
-        }
+        #ifndef ENABLE_EXPERIMENTAL
+            if (total < 8)
+            {
+                auto const & encTableEntry = tinyEncodeTable[(maxLeft >= 8) ? 7 : maxLeft][(maxRight >= 8) ? 7 : maxRight][left][total];
+                dataStream->push(encTableEntry.value_, encTableEntry.length_);
+                return;
+            }
+        #endif
+
         if (total > maxLeft)
         {
             auto inferredRight = (total - maxLeft);
@@ -112,13 +155,31 @@ namespace
             auto needMsb = ((left | (1ull << codeLength)) <= total);
             auto code = ((left << needMsb) | (left >> codeLength));
             codeLength += needMsb;
-            dataStream->push(code, codeLength);
+
+            #ifdef ENABLE_EXPERIMENTAL
+                // experimental mode pushes the values to pack into
+                // files rathre than encoding. These files are then 
+                // compressed with external entropy coders instead.
+                // There is NOT DECODER to match this mode.  It's for 
+                // experimentation only.
+                if ((total < 256) && (total > 1))
+                {
+                    char c = (char)code;
+                    experimental::experimentalOutputStreams_[total].write(&c, 1);
+                }
+                else
+                {
+                    dataStream->push(code, codeLength);
+                }
+            #else
+                dataStream->push(code, codeLength);
+            #endif
         }
     }
 
 
     //======================================================================================================================
-    inline std::uint32_t unpack_value
+    force_inline std::uint32_t unpack_value
     (
         input_stream * inputStream,
         std::uint32_t total,
@@ -271,8 +332,9 @@ namespace
         merge(dataStream + 1, begin + leftSize, rightSize, rightSize >> 1, right, rightLeadingRunLength);
 
         #pragma pack(push, 1)
-        using size_union = union 
+        using size_union = union size_union
         {
+            size_union(std::uint32_t left, std::uint32_t right):size_({left, right}){};
             std::size_t union_;
             struct
             {
@@ -281,18 +343,14 @@ namespace
             } size_;
         };
         #pragma pack(pop)
-        size_union partitionSize_;
-        partitionSize_.size_.left_ = leftSize;
-        partitionSize_.size_.right_ = rightSize;
 
+        size_union partitionSize_(leftSize, rightSize);
         while (partitionSize_.size_.left_ && partitionSize_.size_.right_)
         {
-            size_union count;
-            count.size_ = 
-            {
+            size_union count(
                 (-(current[leftSide]->symbol_ <= current[rightSide]->symbol_) & (std::uint32_t)current[leftSide]->count_),
                 (-(current[rightSide]->symbol_ <= current[leftSide]->symbol_) & (std::uint32_t)current[rightSide]->count_)
-            };
+            );
             auto totalCount = (count.size_.left_ + count.size_.right_);
             pack_value(dataStream, count.size_.left_, totalCount, partitionSize_.size_.left_, partitionSize_.size_.right_);
             partitionSize_.union_ -= count.union_;
@@ -319,6 +377,12 @@ auto maniscalco::m99_encode
     std::uint8_t const * end
 ) -> std::vector<std::uint8_t>
 {
+    #ifdef ENABLE_EXPERIMENTAL
+        std::cout << "**** EXPERIMENTAL MODE ENABLED **** " << std::endl;
+        std::cout << "**** This mode does not produce viable compressed data **** " << std::endl;
+        experimental::initialize_experimental_output_streams();
+    #endif
+
     // determine initial merge boundary (left size is largest power of 2 that is less than the input size).
     std::uint32_t bytesToEncode = std::distance(begin, end);
     std::uint32_t leftSize = 1;
@@ -355,6 +419,11 @@ auto maniscalco::m99_encode
     headerStream >> output;
     for (auto const & dataStream : encodeStream)
         dataStream >> output;
+
+    #ifdef ENABLE_EXPERIMENTAL
+        experimental::finalize_experiemental_output_streams();
+    #endif
+
     return output;
 }
 
