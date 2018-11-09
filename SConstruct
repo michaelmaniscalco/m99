@@ -10,7 +10,10 @@ force_include_headers = []
 #===============================================================================
 # common defines
 #===============================================================================
-common_compiler_defines = []
+common_compiler_defines = [
+        '-Dforce_inline=__attribute__((always_inline)) inline ',
+        '-Dforce_no_inline=__attribute__((noinline)) '
+        ]
 
 
 #===============================================================================
