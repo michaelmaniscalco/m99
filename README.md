@@ -2,7 +2,7 @@
 
 novel high performance BWT compression algorithm
 
-`mkdir build`
-`cd build`
-`cmake ..`
-`make`
+mkdir build
+cd build
+cmake ..
+make
