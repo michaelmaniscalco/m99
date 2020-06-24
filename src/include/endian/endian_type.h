@@ -11,4 +11,3 @@ namespace maniscalco
     using host_order_type = little_endian_type;
    //    using host_order_type = big_endian_type;
 }
-

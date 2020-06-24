@@ -7,44 +7,6 @@
 
 namespace
 {
-
-
-    #ifdef ENABLE_EXPERIMENTAL
-    namespace experimental
-    {
-
-        std::ofstream experimentalOutputStreams_[256];
-
-        void initialize_experimental_output_streams
-        (
-        )
-        {
-            for (auto i = 0; i < 256; ++i)
-            {
-                std::string streamName = "./m99.experimental.";
-                streamName += std::to_string(i);
-                streamName += ".dat";
-                experimentalOutputStreams_[i] = std::ofstream(streamName.c_str(), std::ios_base::out | std::ios_base::binary);
-            }
-        }
-
-
-        void finalize_experiemental_output_streams
-        (
-        )
-        {
-            for (auto i = 0; i < 256; ++i)
-            {
-                experimentalOutputStreams_[i].flush();
-                experimentalOutputStreams_[i].close();
-            }
-        }
-
-    }
-    #endif
-
-
-
     using namespace maniscalco;
 
     struct symbol_info
@@ -116,7 +78,7 @@ namespace
 
 
     //======================================================================================================================
-    force_inline void pack_value
+    void pack_value
     (
         output_stream * dataStream,
         std::uint32_t left,
@@ -125,14 +87,12 @@ namespace
         std::uint32_t maxRight
     )
     {
-        #ifndef ENABLE_EXPERIMENTAL
-            if (total < 8)
-            {
-                auto const & encTableEntry = tinyEncodeTable[(maxLeft >= 8) ? 7 : maxLeft][(maxRight >= 8) ? 7 : maxRight][left][total];
-                dataStream->push(encTableEntry.value_, encTableEntry.length_);
-                return;
-            }
-        #endif
+        if (total < 8)
+        {
+            auto const & encTableEntry = tinyEncodeTable[(maxLeft >= 8) ? 7 : maxLeft][(maxRight >= 8) ? 7 : maxRight][left][total];
+            dataStream->push(encTableEntry.value_, encTableEntry.length_);
+            return;
+        }
 
         if (total > maxLeft)
         {
@@ -155,31 +115,13 @@ namespace
             auto needMsb = ((left | (1ull << codeLength)) <= total);
             auto code = ((left << needMsb) | (left >> codeLength));
             codeLength += needMsb;
-
-            #ifdef ENABLE_EXPERIMENTAL
-                // experimental mode pushes the values to pack into
-                // files rathre than encoding. These files are then 
-                // compressed with external entropy coders instead.
-                // There is NOT DECODER to match this mode.  It's for 
-                // experimentation only.
-                if ((total < 256) && (total > 1))
-                {
-                    char c = (char)code;
-                    experimental::experimentalOutputStreams_[total].write(&c, 1);
-                }
-                else
-                {
-                    dataStream->push(code, codeLength);
-                }
-            #else
-                dataStream->push(code, codeLength);
-            #endif
+            dataStream->push(code, codeLength);
         }
     }
 
 
     //======================================================================================================================
-    force_inline std::uint32_t unpack_value
+    std::uint32_t unpack_value
     (
         input_stream * inputStream,
         std::uint32_t total,
@@ -377,12 +319,6 @@ auto maniscalco::m99_encode
     std::uint8_t const * end
 ) -> std::vector<std::uint8_t>
 {
-    #ifdef ENABLE_EXPERIMENTAL
-        std::cout << "**** EXPERIMENTAL MODE ENABLED **** " << std::endl;
-        std::cout << "**** This mode does not produce viable compressed data **** " << std::endl;
-        experimental::initialize_experimental_output_streams();
-    #endif
-
     // determine initial merge boundary (left size is largest power of 2 that is less than the input size).
     std::uint32_t bytesToEncode = std::distance(begin, end);
     std::uint32_t leftSize = 1;
@@ -419,11 +355,6 @@ auto maniscalco::m99_encode
     headerStream >> output;
     for (auto const & dataStream : encodeStream)
         dataStream >> output;
-
-    #ifdef ENABLE_EXPERIMENTAL
-        experimental::finalize_experiemental_output_streams();
-    #endif
-
     return output;
 }
 

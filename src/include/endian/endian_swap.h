@@ -1,8 +1,8 @@
 #pragma once
 
-#include <type_traits>
 #include "./endian_type.h"
 #include "./byte_swap.h"
+#include <type_traits>
 
 
 namespace maniscalco
@@ -11,31 +11,31 @@ namespace maniscalco
     namespace impl
     {
 
-        template 
+        template
         <
-            typename, 
-            typename, 
+            typename,
+            typename,
             typename = void
-        > 
+        >
         struct endian_swap;
 
 
         //======================================================================
         // specialization for from == to (no byte swap)
-        template 
+        template
         <
-            typename from_endian, 
+            typename from_endian,
             typename to_endian
         >
         struct endian_swap
         <
-            from_endian, 
-            to_endian, 
+            from_endian,
+            to_endian,
             typename std::enable_if
             <
                 std::is_same
                 <
-                    from_endian, 
+                    from_endian,
                     to_endian
                 >::value
             >::type
@@ -54,20 +54,20 @@ namespace maniscalco
 
         //======================================================================
         // specialization for from != to (do byte swap)
-        template 
+        template
         <
-            typename from_endian, 
+            typename from_endian,
             typename to_endian
         >
         struct endian_swap
         <
-            from_endian, 
-            to_endian, 
+            from_endian,
+            to_endian,
             typename std::enable_if
             <
                 !std::is_same
                 <
-                    from_endian, 
+                    from_endian,
                     to_endian
                 >::value
             >::type
@@ -79,7 +79,7 @@ namespace maniscalco
                 data_type input
             ) const
             {
-                return maniscalco::byte_swap(input);
+                return byte_swap(input);
             }
         };
 
@@ -88,11 +88,11 @@ namespace maniscalco
 
     //==========================================================================
     // static
-    // do a byte swap from one endian to another as speicified 
-    template 
+    // do a byte swap from one endian to another as speicified
+    template
     <
-        typename from_endian, 
-        typename to_endian, 
+        typename from_endian,
+        typename to_endian,
         typename data_type
     >
     static inline data_type endian_swap
@@ -104,6 +104,3 @@ namespace maniscalco
     }
 
 }
-
-
-

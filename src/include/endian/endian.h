@@ -1,63 +1,35 @@
 #pragma once
 
+
+
+namespace maniscalco
+{
+    
+    template <typename, typename> class endian;
+
+} // namespace maniscalco
+
+
+#include "./byte_swap.h"
+#include "./endian_type.h"
+#include "./endian_swap.h"
+
 #include <type_traits>
 
 
 namespace maniscalco
 {
 
-    template 
-    <
-        typename data_type
-    >
-    using enable_if_endian_underlying_type = 
-    typename std::enable_if
-    <
-        true || //allow any type.  byte_swap_impl must be specialized for that type
-        std::is_enum<data_type>::value || 
-        std::is_pointer<data_type>::value || 
-        std::is_integral<data_type>::value
-    >::type;
-
-
-    template 
-    <
-        typename, 
-        typename, 
-        typename = void
-    > 
-    class endian;
-
-} // namespace maniscalco
-
-
-
-#include "./endian_type.h"
-#include "./endian_swap.h"
-
-
-namespace maniscalco
-{
-
     //==============================================================================
-    template 
-    <
-        typename data_type, 
-        typename endian_type
-    >
+    template <typename data_type, typename endian_type>
     class endian
-    <
-        data_type, 
-        endian_type, 
-        enable_if_endian_underlying_type<data_type>
-    >
     {
     public:
 
         using underlying_type = data_type;
         using type = endian_type;
 
-        template <typename, typename, typename> 
+        template <typename, typename>
         friend class endian;
 
         endian();
@@ -95,7 +67,7 @@ namespace maniscalco
         operator underlying_type() const;
 
         underlying_type get() const;
-        
+
     protected:
 
     private:
@@ -137,12 +109,8 @@ namespace maniscalco
 
 
 //==============================================================================
-template
-<
-    typename data_type, 
-    typename endian_type
->
-maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlying_type<data_type>>::endian
+template <typename data_type, typename endian_type>
+maniscalco::endian<data_type, endian_type>::endian
 (
 ):
     value_()
@@ -151,12 +119,8 @@ maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlyi
 
 
 //==============================================================================
-template
-<
-    typename data_type, 
-    typename endian_type
->
-maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlying_type<data_type>>::endian
+template <typename data_type, typename endian_type>
+maniscalco::endian<data_type, endian_type>::endian
 (
     endian && input
 ):
@@ -166,12 +130,8 @@ maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlyi
 
 
 //==============================================================================
-template
-<
-    typename data_type, 
-    typename endian_type
->
-maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlying_type<data_type>>::endian
+template <typename data_type, typename endian_type>
+maniscalco::endian<data_type, endian_type>::endian
 (
     endian const & input
 ):
@@ -181,12 +141,8 @@ maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlyi
 
 
 //==============================================================================
-template
-<
-    typename data_type, 
-    typename endian_type
->
-maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlying_type<data_type>>::endian
+template <typename data_type, typename endian_type>
+maniscalco::endian<data_type, endian_type>::endian
 (
     data_type input
 ):
@@ -196,12 +152,8 @@ maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlyi
 
 
 //==============================================================================
-template
-<
-    typename data_type, 
-    typename endian_type
->
-auto maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlying_type<data_type>>::operator =
+template <typename data_type, typename endian_type>
+auto maniscalco::endian<data_type, endian_type>::operator =
 (
     endian const & input
 ) -> endian &
@@ -212,12 +164,8 @@ auto maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_und
 
 
 //==============================================================================
-template
-<
-    typename data_type, 
-    typename endian_type
->
-auto maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlying_type<data_type>>::operator =
+template <typename data_type, typename endian_type>
+auto maniscalco::endian<data_type, endian_type>::operator =
 (
     endian && input
 ) -> endian &
@@ -228,15 +176,11 @@ auto maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_und
 
 
 //==============================================================================
-template
-<
-    typename data_type, 
-    typename endian_type
->
-auto maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlying_type<data_type>>::operator =
+template <typename data_type, typename endian_type>
+auto maniscalco::endian<data_type, endian_type>::operator =
 (
     data_type input
-) -> endian & 
+) -> endian &
 {
     value_ = endian_swap<host_order_type, endian_type>(input);
     return *this;
@@ -244,12 +188,8 @@ auto maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_und
 
 
 //==============================================================================
-template
-<
-    typename data_type, 
-    typename endian_type
->
-maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlying_type<data_type>>::operator underlying_type
+template <typename data_type, typename endian_type>
+maniscalco::endian<data_type, endian_type>::operator underlying_type
 (
 ) const
 {
@@ -258,12 +198,8 @@ maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlyi
 
 
 //==============================================================================
-template
-<
-    typename data_type, 
-    typename endian_type
->
-auto maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_underlying_type<data_type>>::get
+template <typename data_type, typename endian_type>
+auto maniscalco::endian<data_type, endian_type>::get
 (
 ) const -> underlying_type
 {
@@ -272,89 +208,88 @@ auto maniscalco::endian<data_type, endian_type, maniscalco::enable_if_endian_und
 
 
 //==============================================================================
-template <typename T, typename E> 
+template <typename T, typename E>
 auto maniscalco::make_big_endian
 (
     maniscalco::endian<T, E> value
-) -> big_endian<T> 
+) -> big_endian<T>
 {
     return big_endian<T>((T)value);
 }
 
 
 //==============================================================================
-template <typename T> 
+template <typename T>
 auto maniscalco::make_big_endian
 (
     T value
-) -> big_endian<T> 
+) -> big_endian<T>
 {
     return big_endian<T>((T)value);
 }
 
 
 //==============================================================================
-template <typename T, typename E> 
+template <typename T, typename E>
 auto maniscalco::make_little_endian
 (
     endian<T, E> value
-) -> little_endian<T> 
+) -> little_endian<T>
 {
     return little_endian<T>((T)value);
 }
 
 
 //==============================================================================
-template <typename T> 
+template <typename T>
 auto maniscalco::make_little_endian
 (
     T value
-) -> little_endian<T> 
+) -> little_endian<T>
 {
     return little_endian<T>((T)value);
 }
 
 
 //==============================================================================
-template <typename T, typename E> 
+template <typename T, typename E>
 auto maniscalco::make_host_order
 (
     endian<T, E> value
-) -> host_order<T> 
+) -> host_order<T>
 {
     return host_order<T>((T)value);
 }
 
 
 //==============================================================================
-template <typename T> 
+template <typename T>
 auto maniscalco::make_host_order
 (
     T value
-) -> host_order<T> 
+) -> host_order<T>
 {
     return host_order<T>((T)value);
 }
 
 
 //==============================================================================
-template <typename T, typename E> 
+template <typename T, typename E>
 auto maniscalco::make_network_order
 (
     endian<T, E> value
-) -> network_order<T> 
+) -> network_order<T>
 {
     return network_order<T>((T)value);
 }
 
 
 //==============================================================================
-template <typename T> 
+template <typename T>
 auto maniscalco::make_network_order
 (
     T value
-) -> network_order<T> 
+) -> network_order<T>
 {
     return network_order<T>((T)value);
 }
-

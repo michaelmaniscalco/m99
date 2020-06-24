@@ -54,11 +54,6 @@ namespace
 
         auto sentinelIndex = maniscalco::forward_burrows_wheeler_transform(begin, end, numThreads);
 
-#ifdef ENABLE_EXPERIMENTAL
-    // experimental mode produces output files.  encoder should be single threaded
-    // for experimental mode.
-    numThreads = 1;
-#endif
         std::vector<std::thread> encodingThreads;
         std::vector<std::vector<std::uint8_t>> encodeBuffers(numThreads);
         std::uint32_t bytesPerBlock = ((inputSize + numThreads - 1) / numThreads);
@@ -359,7 +354,7 @@ std::int32_t main
             }
         }
     }
-    if ((numThreads == 0))// || (numThreads > std::thread::hardware_concurrency()))
+    if ((numThreads == 0) || (numThreads > std::thread::hardware_concurrency()))
         numThreads = std::thread::hardware_concurrency();
 
     switch (argValue[1][0])
