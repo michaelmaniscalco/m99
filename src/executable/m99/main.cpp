@@ -1,4 +1,5 @@
-#include <library/m99.h>
+#include <library/m99/m99_encode.h>
+#include <library/m99/m99_decode.h>
 #include <library/msufsort.h>
 #include <cstdint>
 #include <iostream>
@@ -9,12 +10,21 @@
 #include <thread>
 #include <cstring>
 #include <string>
-
-//#define VERBOSE_MAIN
+#include <atomic>
+#include <mutex>
 
 
 namespace
 {
+
+    static auto constexpr max_encode_block_size = (1ull << 20);
+
+    struct block_header
+    {
+        std::uint32_t blockSize_;
+        std::uint32_t sentinelIndex_;
+    };
+
 
     //==================================================================================================================
     std::vector<char> load_file
@@ -42,119 +52,136 @@ namespace
 
 
     //==================================================================================================================
-    void encode
+    void encode_block
     (
-        std::uint8_t const * begin,
-        std::uint8_t const * end,
+        std::uint8_t const * inputBegin,
+        std::uint8_t const * inputEnd,
         std::ofstream & outStream,
-        std::uint32_t numThreads
+        std::size_t numThreads
     )
-    {        
-        std::uint32_t inputSize = std::distance(begin, end);
+    {
+        // transform input (BWT)
+        auto sentinelIndex = maniscalco::forward_burrows_wheeler_transform(inputBegin, inputEnd, numThreads);
 
-        auto sentinelIndex = maniscalco::forward_burrows_wheeler_transform(begin, end, numThreads);
-
-        std::vector<std::thread> encodingThreads;
-        std::vector<std::vector<std::uint8_t>> encodeBuffers(numThreads);
-        std::uint32_t bytesPerBlock = ((inputSize + numThreads - 1) / numThreads);
-        auto cur = begin;
-        for (std::uint32_t i = 0; i < numThreads; ++i)
+        // write header for input
+        block_header blockHeader
         {
-            std::thread t([](std::uint8_t const * begin, std::uint8_t const * end, std::vector<std::uint8_t> & encodeBuffer)
+            .blockSize_ = std::distance(inputBegin, inputEnd),
+            .sentinelIndex_ = sentinelIndex
+        };
+        outStream.write((char const *)&blockHeader, sizeof(blockHeader));
+
+        // create worker threads for encoding
+        std::vector<std::thread> threads;
+        threads.resize(numThreads);
+        
+        // set threads to process sub blocks of the input
+        std::atomic<std::uint32_t> subBlockId{0};
+        std::mutex mutex;
+        for (auto & thread : threads)
+        {
+            thread = std::thread([&]()
+            {
+                // encode next available sub block until there are none remaining
+                std::uint32_t currentSubBlockId = subBlockId++;
+                auto blockBegin = inputBegin + (currentSubBlockId * max_encode_block_size);
+                while (blockBegin < inputEnd)
+                {
+                    auto blockEnd = (blockBegin + max_encode_block_size);
+                    if (blockEnd > inputEnd)
+                        blockEnd = inputEnd;
+                    // create encode stream and encode this subblock
+                    maniscalco::m99_encode_stream encodeStream;
+                    maniscalco::m99_encode(blockBegin, blockEnd, encodeStream);
+                    encodeStream.flush();
+                    // write this encoded sub block to the destination
+                    std::lock_guard lockGuard(mutex);
+                    auto encodedSize = ((encodeStream.size() + 7) / 8);
+                    outStream.write((char const *)&encodedSize, 4);
+                    outStream.write((char const *)&currentSubBlockId, 4);
+                    // write the encoded data for the stream
+                    for (auto const & packet : encodeStream)
                     {
-                        auto e = maniscalco::m99_encode(begin, end);
-                        encodeBuffer = std::move(e);
-                    },
-                    cur, (cur + bytesPerBlock) > end ? end : (cur + bytesPerBlock), std::ref(encodeBuffers[i]));
-            encodingThreads.push_back(std::move(t));
-            cur += bytesPerBlock;
+                        auto bytesToWrite = ((packet.size() + 7) / 8);
+                        auto address = (packet.data() + packet.capacity() - bytesToWrite);
+                        outStream.write((char const *)address, bytesToWrite);
+                    }
+                    currentSubBlockId = subBlockId++;
+                    blockBegin = inputBegin + (currentSubBlockId * max_encode_block_size);
+                }
+            });
         }
-        for (auto & e : encodingThreads)
-            e.join();
-
-
-        std::size_t outputSize = 0;
-        outputSize = (sizeof(inputSize) + sizeof(sentinelIndex) + sizeof(bytesPerBlock));
-        for (auto const & e : encodeBuffers)
-        {
-            outputSize += e.size();
-            outputSize += sizeof(std::uint32_t);  
-        }
-
-        std::uint32_t totalEncodedSize = sizeof(inputSize) + sizeof(sentinelIndex) + sizeof(bytesPerBlock);
-        for (auto const & e : encodeBuffers)
-        {
-            totalEncodedSize += e.size();
-            totalEncodedSize += sizeof(std::uint32_t);
-        }
-        outStream.write((char *)&totalEncodedSize, sizeof(totalEncodedSize));
-
-        outStream.write((char *)&inputSize, sizeof(inputSize));
-        outStream.write((char *)&sentinelIndex, sizeof(sentinelIndex));
-        outStream.write((char *)&bytesPerBlock, sizeof(bytesPerBlock));
-        for (auto const & e : encodeBuffers)
-        {
-            std::uint32_t encodedSize = e.size();
-            outStream.write((char const *)&encodedSize, sizeof(encodedSize));
-            outStream.write((char const *)&*e.begin(), encodedSize);
-        }
+        // wait for threads to complete encoding
+        for (auto & thread : threads)
+            thread.join();
     }
 
 
     //==================================================================================================================
-    void decode
+    void decode_block
     (
-        std::uint8_t const * begin,
+        std::ifstream & inStream,
         std::ofstream & outStream,
         std::uint32_t numThreads
     )
     {
-        std::uint32_t originalSize = *(std::uint32_t const *)&*begin;
-        begin += sizeof(originalSize);
-        std::uint32_t sentinelIndex = *(std::uint32_t const *)&*begin;
-        begin += sizeof(sentinelIndex);
-        std::uint32_t blockSize = *(std::uint32_t const *)&*begin;
-        begin += sizeof(blockSize);
-        std::vector<std::uint8_t> decodedData;
-        decodedData.resize(originalSize);
+        // read header for block
+        block_header blockHeader;
+        inStream.read((char *)&blockHeader, sizeof(blockHeader));
+        std::uint32_t bytesPerSubBlock = ((blockHeader.blockSize_ + numThreads - 1) / numThreads);
 
-        auto inputCurrent = begin;
-        auto outputCurrent = decodedData.data();
-        auto bytesToDecode = originalSize;
+        // allocate space for decoded block data
+        std::vector<std::uint8_t> output;
+        output.resize(blockHeader.blockSize_);
+        auto outputBegin = output.data();
+        auto outputEnd = (outputBegin + output.size());
 
+        // create decode threads
+        std::vector<std::thread> threads;
+        threads.resize(numThreads);
 
-        std::array<int32_t, 256> symbolCount;
-        for (auto & e : symbolCount)
-            e = 0;
+        std::atomic<std::uint32_t> numSubBlocksToDecode((blockHeader.blockSize_ + max_encode_block_size - 1) / max_encode_block_size);
+        auto n = numSubBlocksToDecode.load();
 
-        while (bytesToDecode > 0)
+        std::mutex mutex;
+        for (auto & thread : threads)
         {
-            std::vector<std::thread> decodeThreads;
-            for (uint32_t i = 0; i < numThreads; ++i)
-            {
-                if (blockSize > bytesToDecode)
-                    blockSize = bytesToDecode;
-                if (bytesToDecode > 0)
+            thread = std::thread([&]()
                 {
-                    std::uint32_t encodedSize = *(std::uint32_t const *)inputCurrent;
-                    inputCurrent += sizeof(encodedSize);
-                    std::thread t([](std::uint8_t const * inputBegin, std::uint8_t const * inputEnd, std::uint8_t * outputBegin, std::uint8_t * outputEnd)
-                            {maniscalco::m99_decode(inputBegin, inputEnd, outputBegin, outputEnd);}, 
-                            inputCurrent, inputCurrent + encodedSize, outputCurrent, outputCurrent + blockSize);
-                    decodeThreads.push_back(std::move(t));
-                    inputCurrent += encodedSize;
-                    outputCurrent += blockSize;
-                    bytesToDecode -= blockSize;
-                }
-            }
-            for (auto & e : decodeThreads)
-                e.join();
-        }
-        maniscalco::reverse_burrows_wheeler_transform(decodedData.begin(), decodedData.end(), sentinelIndex, numThreads);
-        
+                    while (true)
+                    {
+                        maniscalco::buffer encodedData;
+                        std::uint32_t encodedSize = 0;
+                        std::uint32_t subBlockId = 0;
+                        {
+                            std::lock_guard lockGuard(mutex);
+                            if (numSubBlocksToDecode < 1)
+                                return; // no more work to do
 
-        outStream.write((char const *)&*decodedData.begin(), decodedData.size());
-     //   outStream.close();
+                            --numSubBlocksToDecode;
+                            // read next compress subblock from source
+                            inStream.read((char *)&encodedSize, 4);
+                            inStream.read((char *)&subBlockId, 4);
+                            // read encoded sub block data
+                            encodedData = std::move(maniscalco::buffer(encodedSize));
+                            inStream.read((char *)encodedData.data(), encodedSize);
+                        }
+                        auto destinationBegin = (outputBegin + (subBlockId * max_encode_block_size));
+                        auto destinationEnd = (destinationBegin + max_encode_block_size);
+                        if (destinationEnd > outputEnd)
+                            destinationEnd = outputEnd;
+                        maniscalco::m99_decode_stream decodeStream(std::move(encodedData), encodedSize);
+                        maniscalco::m99_decode(decodeStream, destinationBegin, destinationEnd);
+                    }
+                });
+        }
+        // wait for all subblocks to be decoded
+        for (auto & thread : threads)
+            thread.join();
+
+        // reverse the BWT
+        maniscalco::reverse_burrows_wheeler_transform(output.begin(), output.end(), blockHeader.sentinelIndex_, numThreads);
+        outStream.write((char const *)&*outputBegin, output.size());
     }
 
 
@@ -206,20 +233,13 @@ namespace
             return;
         }
 
-        std::vector<std::uint8_t> input;
-        input.reserve(1 << 30);
-
         auto startTime = std::chrono::system_clock::now();
-        while (true)
-        {
-            std::uint32_t blockSize = 0;
-            inputStream.read((char *)&blockSize, sizeof(blockSize));
-            if (inputStream.gcount() == 0)
-                break;
-            input.resize(blockSize);
-            inputStream.read((char *)input.data(), blockSize);
-            decode(input.data(), outStream, numThreads);
-        }
+        inputStream.seekg(0, std::ios_base::end);
+        auto end = inputStream.tellg();
+        inputStream.seekg(0, std::ios_base::beg);
+
+        while (inputStream.tellg() != end)
+            decode_block(inputStream, outStream, numThreads);
 
         auto finishTime = std::chrono::system_clock::now();
         auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(finishTime - startTime).count();
@@ -268,9 +288,8 @@ namespace
             if (size == 0)
                 break;
             bytesEncoded += size;
-            encode(input.data(), input.data() + size, outStream, numThreads);
+            encode_block(input.data(), input.data() + size, outStream, numThreads);
         }
-
         auto finishTime = std::chrono::system_clock::now();
         auto elapsedOverallEncode = std::chrono::duration_cast<std::chrono::milliseconds>(finishTime - startTime).count();
 
@@ -362,16 +381,12 @@ std::int32_t main
         case 'e':
         {
             encode(argValue[2], argValue[3], numThreads, maxBlockSize);
-//            auto input = load_file(argValue[2]);
-  //          encode((std::uint8_t const *)input.data(), (std::uint8_t const *)input.data() + input.size(), argValue[3], numThreads);
             break;
         }
 
         case 'd':
         {
             decode(argValue[2], argValue[3], numThreads);
-//            auto input = load_file(argValue[2]);
-  //          decode((std::uint8_t const *)input.data(), argValue[3], numThreads);
             break;
         }
 

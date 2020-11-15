@@ -1,8 +1,4 @@
-#include "./m99.h"
-#include "./input_stream.h"
-#include "./output_stream.h"
-#include <fstream>
-#include <iostream>
+#include "./m99_encode.h"
 
 
 namespace
@@ -40,6 +36,8 @@ namespace
                 {
                     for (std::uint32_t right = 0; right <= maxRight; ++right)
                     {
+                        if ((maxLeft == 2) && (maxRight==2) && ((left+right)==1) && (left==1))
+                            int y = 9;
                         std::uint32_t total = left + right;
                         if (total < 8)
                         {
@@ -67,6 +65,8 @@ namespace
                             auto needMsb = ((l | (1ull << codeLength)) <= t);
                             auto code = ((l << needMsb) | (l >> codeLength));
                             codeLength += needMsb;
+                
+                                        code &= ((1ull << codeLength) - 1); // TEMP
                             result[maxLeft][maxRight][left][total] = {code, codeLength};
                         }
                     }
@@ -80,7 +80,7 @@ namespace
     //======================================================================================================================
     void pack_value
     (
-        output_stream * dataStream,
+        m99_encode_stream & encodeStream,
         std::uint32_t left,
         std::uint32_t total,
         std::uint32_t maxLeft,
@@ -90,7 +90,7 @@ namespace
         if (total < 8)
         {
             auto const & encTableEntry = tinyEncodeTable[(maxLeft >= 8) ? 7 : maxLeft][(maxRight >= 8) ? 7 : maxRight][left][total];
-            dataStream->push(encTableEntry.value_, encTableEntry.length_);
+            encodeStream.push(encTableEntry.value_, encTableEntry.length_);
             return;
         }
 
@@ -114,118 +114,18 @@ namespace
             --codeLength;
             auto needMsb = ((left | (1ull << codeLength)) <= total);
             auto code = ((left << needMsb) | (left >> codeLength));
+
             codeLength += needMsb;
-            dataStream->push(code, codeLength);
+                        code &= ((1ull << codeLength) - 1); // TEMP
+            encodeStream.push(code, codeLength);
         }
-    }
-
-
-    //======================================================================================================================
-    std::uint32_t unpack_value
-    (
-        input_stream * inputStream,
-        std::uint32_t total,
-        std::uint32_t maxLeft,
-        std::uint32_t maxRight
-    )
-    {
-        if (total > maxLeft)
-        {
-            auto inferredRight = (total - maxLeft);
-            maxRight -= inferredRight;
-            total -= inferredRight;
-        }
-        auto left = 0;
-        if (total > maxRight)
-        {
-            left = (total - maxRight);
-            total -= left;
-        }
-        if (total)
-        {
-            std::uint32_t codeLength = 1;
-            while (total >> ++codeLength)
-                ;
-            auto code = inputStream->pop(--codeLength);
-            if (((code | (1ull << codeLength)) <= total))
-                code |= (inputStream->pop_bit() << codeLength);
-            left += code;
-        }    
-        return left;
-    }
-
-
-    //======================================================================================================================
-    void split
-    (
-        input_stream * inputStream,
-        std::uint8_t * decodedData,
-        std::uint32_t totalSize,
-        std::uint32_t leftSize,
-        symbol_info const * parentSymbolInfo
-    )
-    {
-        if (parentSymbolInfo[0].count_ >= totalSize)
-        {
-            while (totalSize--)
-                *decodedData++ = parentSymbolInfo[0].symbol_;
-            return;
-        }
-
-        if (totalSize <= 2)
-        {
-            if (totalSize == 2)
-            {
-                auto c = inputStream->pop(1);
-                decodedData[c == 1] = parentSymbolInfo[1].symbol_;
-                decodedData[c == 0] = parentSymbolInfo[0].symbol_; 
-            }
-            else
-            {
-                decodedData[0] = parentSymbolInfo[0].symbol_;
-            }
-            return;
-        }
-
-        std::uint32_t rightSize = (totalSize - leftSize);
-        symbol_info leftSymbolInfo[256];
-        symbol_info rightSymbolInfo[256];
-        symbol_info * result[2] = {leftSymbolInfo, rightSymbolInfo};
-        symbol_info const * currentSymbolInfo = parentSymbolInfo;
-        static auto constexpr leftSide = 0;
-        static auto constexpr rightSide = 1;
-
-        auto leftSizeRemaining = leftSize;
-        auto rightSizeRemaining = rightSize;
-        while (leftSizeRemaining && rightSizeRemaining)
-        {
-            symbol_info symbolInfo = *currentSymbolInfo++;
-            auto totalCount = symbolInfo.count_;
-            auto leftCount = unpack_value(inputStream, totalCount, leftSizeRemaining, rightSizeRemaining);
-            auto rightCount = (totalCount - leftCount);
-            leftSizeRemaining -= leftCount;
-            rightSizeRemaining -= rightCount;
-            *result[leftSide] = {symbolInfo.symbol_, leftCount};
-            *result[rightSide] = {symbolInfo.symbol_, rightCount};
-            result[leftSide] += (leftCount != 0);
-            result[rightSide] += (rightCount != 0);
-        }
-        auto n = leftSizeRemaining + rightSizeRemaining;
-        symbol_info * c = result[(leftSizeRemaining == 0)];
-        while (n > 0)
-        {
-            n -= currentSymbolInfo->count_;
-            *c++ = *currentSymbolInfo++;
-        }
-        split(inputStream + 1, decodedData, leftSize, leftSize >> 1, leftSymbolInfo);
-        split(inputStream + 1, decodedData + leftSize, rightSize, rightSize >> 1, rightSymbolInfo);
     }
 
 
     //==========================================================================
     void merge
     (
-        output_stream * dataStream,
+        m99_encode_stream & encodeStream,
         std::uint8_t const * begin,
         std::uint32_t totalSize,
         std::uint32_t leftSize,
@@ -245,7 +145,7 @@ namespace
                 auto c = (unsigned)(begin[0] < begin[1]);
                 result[0] = {begin[!c], 1 + (unsigned)(begin[0] == begin[1])};
                 result[1] = {begin[c], 1};
-                dataStream->push(c, begin[0] != begin[1]);
+                encodeStream.push(c, begin[0] != begin[1]);
             }
             else
             {
@@ -270,8 +170,8 @@ namespace
             return std::distance(begin, cur);
         }(begin + leftSize, begin + totalSize);
 
-        merge(dataStream + 1, begin, leftSize, leftSize >> 1, left, leadingRunLength);
-        merge(dataStream + 1, begin + leftSize, rightSize, rightSize >> 1, right, rightLeadingRunLength);
+        merge(encodeStream, begin + leftSize, rightSize, rightSize >> 1, right, rightLeadingRunLength);
+        merge(encodeStream, begin, leftSize, leftSize >> 1, left, leadingRunLength);
 
         #pragma pack(push, 1)
         using size_union = union size_union
@@ -286,6 +186,9 @@ namespace
         };
         #pragma pack(pop)
 
+        std::array<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>, 256> valuesToEncode;
+        std::uint32_t numValuesToEncode{0};
+
         size_union partitionSize_(leftSize, rightSize);
         while (partitionSize_.size_.left_ && partitionSize_.size_.right_)
         {
@@ -294,7 +197,7 @@ namespace
                 (-(current[rightSide]->symbol_ <= current[leftSide]->symbol_) & (std::uint32_t)current[rightSide]->count_)
             );
             auto totalCount = (count.size_.left_ + count.size_.right_);
-            pack_value(dataStream, count.size_.left_, totalCount, partitionSize_.size_.left_, partitionSize_.size_.right_);
+            valuesToEncode[numValuesToEncode++] = {count.size_.left_, totalCount, partitionSize_.size_.left_, partitionSize_.size_.right_};
             partitionSize_.union_ -= count.union_;
             *resultCurrent++ = {current[(count.size_.left_ == 0)]->symbol_, totalCount};
             current[leftSide] += (count.size_.left_ != 0);
@@ -307,17 +210,24 @@ namespace
             n -= c->count_;
             *resultCurrent++ = *c++;
         }
+        while (numValuesToEncode)
+        {
+            auto [left, total, maxLeft, maxRight] = valuesToEncode[--numValuesToEncode];
+            pack_value(encodeStream, left, total, maxLeft, maxRight);
+        }
     }
 
 } // namespace
 
 
 //==========================================================================
-auto maniscalco::m99_encode
+void maniscalco::m99_encode
 (
     std::uint8_t const * begin,
-    std::uint8_t const * end
-) -> std::vector<std::uint8_t>
+    std::uint8_t const * end,
+    m99_encode_stream & encodeStream
+
+)
 {
     // determine initial merge boundary (left size is largest power of 2 that is less than the input size).
     std::uint32_t bytesToEncode = std::distance(begin, end);
@@ -327,8 +237,6 @@ auto maniscalco::m99_encode
     symbol_info symbolList[256];
 
     // do recursive merge and encode
-    output_stream headerStream;
-    output_stream encodeStream[32];
     auto cur = begin;
     auto s = *cur;
     while ((cur < end) && (*cur == s))
@@ -336,67 +244,22 @@ auto maniscalco::m99_encode
     auto leadingRunLength = std::distance(begin, cur);
     merge(encodeStream, begin, bytesToEncode, leftSize >> 1, symbolList, leadingRunLength);
 
+    // encode the symbols and their counts 
     auto n = bytesToEncode;
-    for (auto & e : symbolList)
+    std::vector<std::tuple<std::uint8_t, std::uint32_t, std::uint32_t>> headerValuesToEncode;
+    headerValuesToEncode.reserve(256);
+    for (auto & symbolInfo : symbolList)
     {
         if (n == 0)
             break;
-        headerStream.push(e.symbol_, 8);
-        pack_value(&headerStream, e.count_, n, n, n);
-        n -= e.count_;
+        headerValuesToEncode.push_back({symbolInfo.symbol_, symbolInfo.count_, n});
+        n -= symbolInfo.count_;
     }
-
-    auto estimatedOutputSize = ((headerStream.get_size() + 7) >> 3);
-    for (auto & dataStream : encodeStream)
-        estimatedOutputSize += ((dataStream.get_size() + 7) >> 3);
-
-    std::vector<std::uint8_t> output;
-    output.reserve(estimatedOutputSize + 8192);
-    headerStream >> output;
-    for (auto const & dataStream : encodeStream)
-        dataStream >> output;
-    return output;
-}
-
-
-//======================================================================================================================
-void maniscalco::m99_decode
-(
-    std::uint8_t const * inputBegin,
-    std::uint8_t const * inputEnd,
-    std::uint8_t * outputBegin,
-    std::uint8_t * outputEnd
-)
-{
-    // load the encoded header stream
-    input_stream headerStream;
-    auto inputCurrent = inputBegin;
-    inputCurrent = headerStream.load(inputCurrent, inputEnd);
-    // load the encoded sub streams
-    input_stream inputStreams[32];
-    for (auto & inputStream : inputStreams)
+    std::reverse(headerValuesToEncode.begin(), headerValuesToEncode.end());
+    for (auto [symbol, count, maxCount] : headerValuesToEncode)
     {
-        if (inputCurrent < inputEnd)
-            inputCurrent = inputStream.load(inputCurrent, inputEnd);
-        else
-            break;
+        encodeStream.push(symbol, 8);
+        pack_value(encodeStream, count, maxCount, maxCount, maxCount);
     }
-
-    // decode the header stream
-    symbol_info symbolInfo[256];
-    auto bytesToDecode = std::distance(outputBegin, outputEnd);
-    auto n = bytesToDecode;
-    for (auto i = 0; i < 256; ++i)
-    {
-        if (n == 0)
-            break;
-        symbolInfo[i].symbol_ = headerStream.pop(8);
-        symbolInfo[i].count_ = unpack_value(&headerStream, n, n, n);
-        n -= symbolInfo[i].count_;
-    }
-    std::uint32_t leftSize = 1;
-    while (leftSize < bytesToDecode)
-        leftSize <<= 1;
-    split(inputStreams, outputBegin, bytesToDecode, leftSize >> 1, symbolInfo);
+    encodeStream.push(1, 1);
 }
-

@@ -1,10 +1,11 @@
 add_library(m99
-    input_buffer.cpp
-    input_stream.cpp
-    output_buffer.cpp
-    output_stream.cpp
-    m99.cpp
+    m99_decode.cpp
+    m99_encode.cpp
+    m99_encode_stream.cpp
+    m99_decode_stream.cpp
 )
+
+target_link_libraries(m99 io)
 
 target_include_directories(m99
     PUBLIC
