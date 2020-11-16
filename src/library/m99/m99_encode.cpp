@@ -3,6 +3,7 @@
 
 namespace
 {
+
     using namespace maniscalco;
 
     struct symbol_info
@@ -210,6 +211,8 @@ namespace
             n -= c->count_;
             *resultCurrent++ = *c++;
         }
+
+
         while (numValuesToEncode)
         {
             auto [left, total, maxLeft, maxRight] = valuesToEncode[--numValuesToEncode];

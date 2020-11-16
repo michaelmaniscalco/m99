@@ -37,7 +37,7 @@ namespace maniscalco
 
         void flush();
 
-    private:
+    //private:
 
         container_type packets_;
         
