@@ -94,7 +94,6 @@ namespace
             encodeStream.push(encTableEntry.value_, encTableEntry.length_);
             return;
         }
-
         if (total > maxLeft)
         {
             auto inferredRight = (total - maxLeft);
@@ -115,7 +114,6 @@ namespace
             --codeLength;
             auto needMsb = ((left | (1ull << codeLength)) <= total);
             auto code = ((left << needMsb) | (left >> codeLength));
-
             codeLength += needMsb;
                         code &= ((1ull << codeLength) - 1); // TEMP
             encodeStream.push(code, codeLength);

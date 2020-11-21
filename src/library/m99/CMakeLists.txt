@@ -5,7 +5,7 @@ add_library(m99
     m99_decode_stream.cpp
 )
 
-target_link_libraries(m99 io)
+target_link_libraries(m99 io entropy)
 
 target_include_directories(m99
     PUBLIC

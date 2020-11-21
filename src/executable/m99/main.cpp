@@ -286,7 +286,7 @@ namespace
     (
     )
     {
-        std::cout << "m99 - high performance BWT compressor.  Author: M.A. Maniscalco (1999 - 2017)" << std::endl;
+        std::cout << "m99 - high performance BWT compressor.  Author: M.A. Maniscalco (1999 - 2020)" << std::endl;
     }
 
 
