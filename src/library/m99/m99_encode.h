@@ -8,10 +8,11 @@
 namespace maniscalco
 {
 
+    template <typename T>
     void m99_encode
     (
-        std::uint8_t const *,
-        std::uint8_t const *,
+        T const *,
+        T const *,
         m99_encode_stream &
     );
 

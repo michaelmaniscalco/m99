@@ -21,7 +21,7 @@ namespace
 
     struct block_header
     {
-        std::uint32_t blockSize_;
+        std::uint32_t blockSize_; // in bytes
         std::uint32_t sentinelIndex_;
     };
 
@@ -52,22 +52,24 @@ namespace
 
 
     //==================================================================================================================
+    template <typename T>
     void encode_block
     (
         // single threaded
         std::uint8_t const * inputBegin,
         std::uint8_t const * inputEnd,
-        std::ofstream & outStream
+        std::ofstream & outStream,
+        bool useBwt
     )
     {
-        // transform input (BWT)
-        auto sentinelIndex = maniscalco::forward_burrows_wheeler_transform(inputBegin, inputEnd, 1);
+       // transform input (BWT)
+        auto sentinelIndex = useBwt ? maniscalco::forward_burrows_wheeler_transform(inputBegin, inputEnd, 1) : -1;
 
         // write header for input
         block_header blockHeader
         {
-            .blockSize_ = std::distance(inputBegin, inputEnd),
-            .sentinelIndex_ = sentinelIndex
+            .blockSize_ = (std::uint32_t)std::distance(inputBegin, inputEnd),
+            .sentinelIndex_ = (std::uint32_t)sentinelIndex
         };
         outStream.write((char const *)&blockHeader, sizeof(blockHeader));
 
@@ -82,7 +84,7 @@ namespace
                 blockEnd = inputEnd;
             // create encode stream and encode this subblock
             maniscalco::m99_encode_stream encodeStream;
-            maniscalco::m99_encode(blockBegin, blockEnd, encodeStream);
+            maniscalco::m99_encode((T const *)blockBegin, (T const *)blockEnd, encodeStream);
             encodeStream.flush();
             // write this encoded sub block to the destination
             auto encodedSize = ((encodeStream.size() + 7) / 8);
@@ -101,24 +103,25 @@ namespace
     }
 
 
-
     //==================================================================================================================
+    template <typename T>
     void encode_block
     (
         std::uint8_t const * inputBegin,
         std::uint8_t const * inputEnd,
         std::ofstream & outStream,
-        std::size_t numThreads
+        std::size_t numThreads,
+        bool useBwt
     )
     {
         // transform input (BWT)
-        auto sentinelIndex = maniscalco::forward_burrows_wheeler_transform(inputBegin, inputEnd, numThreads);
+        auto sentinelIndex = useBwt ? maniscalco::forward_burrows_wheeler_transform(inputBegin, inputEnd, numThreads) : -1;
 
         // write header for input
         block_header blockHeader
         {
-            .blockSize_ = std::distance(inputBegin, inputEnd),
-            .sentinelIndex_ = sentinelIndex
+            .blockSize_ = (std::uint32_t)std::distance(inputBegin, inputEnd),
+            .sentinelIndex_ = (std::uint32_t)sentinelIndex
         };
         outStream.write((char const *)&blockHeader, sizeof(blockHeader));
 
@@ -143,7 +146,7 @@ namespace
                         blockEnd = inputEnd;
                     // create encode stream and encode this subblock
                     maniscalco::m99_encode_stream encodeStream;
-                    maniscalco::m99_encode(blockBegin, blockEnd, encodeStream);
+                    maniscalco::m99_encode((T const *)blockBegin, (T const *)blockEnd, encodeStream);
                     encodeStream.flush();
                     // write this encoded sub block to the destination
                     std::lock_guard lockGuard(mutex);
@@ -169,11 +172,13 @@ namespace
 
 
     //==================================================================================================================
+    template <typename T>
     void decode_block
     (
         std::ifstream & inStream,
         std::ofstream & outStream,
-        std::uint32_t numThreads
+        std::uint32_t numThreads,
+        bool useBwt
     )
     {
         // read header for block
@@ -222,7 +227,7 @@ namespace
                         if (destinationEnd > outputEnd)
                             destinationEnd = outputEnd;
                         maniscalco::m99_decode_stream decodeStream(std::move(encodedData), encodedSize);
-                        maniscalco::m99_decode(decodeStream, destinationBegin, destinationEnd);
+                        maniscalco::m99_decode(decodeStream, (T *)destinationBegin, (T *)destinationEnd);
                     }
                 });
         }
@@ -232,17 +237,20 @@ namespace
             thread.join();
 
         // reverse the BWT
-        maniscalco::reverse_burrows_wheeler_transform(output.begin(), output.end(), blockHeader.sentinelIndex_, numThreads);
+        if (useBwt)
+            maniscalco::reverse_burrows_wheeler_transform(output.begin(), output.end(), blockHeader.sentinelIndex_, numThreads);
         outStream.write((char const *)&*outputBegin, output.size());
     }
 
 
     //==================================================================================================================
+    template <typename T>
     void decode_block
     (
         // single threaded
         std::ifstream & inStream,
-        std::ofstream & outStream
+        std::ofstream & outStream,
+        bool useBwt
     )
     {
         // read header for block
@@ -273,10 +281,11 @@ namespace
             if (destinationEnd > outputEnd)
                 destinationEnd = outputEnd;
             maniscalco::m99_decode_stream decodeStream(std::move(encodedData), encodedSize);
-            maniscalco::m99_decode(decodeStream, destinationBegin, destinationEnd);
+            maniscalco::m99_decode(decodeStream, (T *)destinationBegin, (T *)destinationEnd);
         }
         // reverse the BWT
-        maniscalco::reverse_burrows_wheeler_transform(output.begin(), output.end(), blockHeader.sentinelIndex_, 1);
+        if (useBwt)
+            maniscalco::reverse_burrows_wheeler_transform(output.begin(), output.end(), blockHeader.sentinelIndex_, 1);
         outStream.write((char const *)&*outputBegin, output.size());
     }
 
@@ -297,9 +306,11 @@ namespace
     {
         std::cout << "Usage: m99 [e|d] inputFile outputFile [switches]" << std::endl;
         std::cout << "\t -t = threadCount" << std::endl;
-        std::cout << "\t -b = blockSize (max = 1GB)" << std::endl; 
+        std::cout << "\t -b = blockSize (max = 1GB)" << std::endl;
+        std::cout << "\t -w = symbol width in bits (8 or 16)" << std::endl; 
+        std::cout << "\t -d = disable BWT" << std::endl;
 
-        std::cout << "example: m99 e inputFile outputFile -t8 -b100000" << std::endl;
+        std::cout << "example: m99 e inputFile outputFile -t8 -b100000 -w16" << std::endl;
         std::cout << "example: m99 d inputFile outputFile -t8" << std::endl; 
         return 0;
     }
@@ -333,16 +344,58 @@ namespace
         inputStream.seekg(0, std::ios_base::end);
         auto end = inputStream.tellg();
         inputStream.seekg(0, std::ios_base::beg);
+        std::uint8_t symbolWidth; 
+        inputStream.read((char *)&symbolWidth, sizeof(symbolWidth));
+        bool useBwt;
+        inputStream.read((char *)&useBwt, sizeof(useBwt));
 
         if (numThreads == 1)
         {
             while (inputStream.tellg() != end)
-                decode_block(inputStream, outStream);
+            {
+                switch (symbolWidth)
+                {
+                    case 8:
+                    {
+                        decode_block<std::uint8_t>(inputStream, outStream, useBwt);
+                        break;
+                    }
+                    case 16:
+                    {
+                        decode_block<std::uint16_t>(inputStream, outStream, useBwt);
+                        break;
+                    }
+                    default:
+                    {
+                        std::cout << "Decode error: invalid symbol width\n";
+                        throw 0;
+                    }
+                }
+            }
         }
         else
         {
             while (inputStream.tellg() != end)
-                decode_block(inputStream, outStream, numThreads);
+            {
+                switch (symbolWidth)
+                {
+                    case 8:
+                    {
+                        decode_block<std::uint8_t>(inputStream, outStream, numThreads, useBwt);
+                        break;
+                    }
+                    case 16:
+                    {
+                        decode_block<std::uint16_t>(inputStream, outStream, numThreads, useBwt);
+                        break;
+                    }
+                    default:
+                    {
+                        std::cout << "Decode error: invalid symbol width\n";
+                        throw 0;
+                    }
+                }
+            }
         }
 
         auto finishTime = std::chrono::system_clock::now();
@@ -355,12 +408,14 @@ namespace
 
 
     //=================================================================================
+    template <typename T>
     void encode
     (
         char const * inputPath,
         char const * outputPath,
         int numThreads,
-        int blockSize
+        int blockSize,
+        bool useBwt
     )
     {
         // create the output stream
@@ -383,19 +438,23 @@ namespace
             return;
         }
 
+        std::uint8_t symbolWidth = (sizeof(T) * 8);
+        outStream.write((char const *)&symbolWidth, 1);
+        outStream.write((char const *)&useBwt, 1);
+
         std::size_t bytesEncoded = 0;
         inputStream.seekg(0, std::ios_base::beg);
         while (true)
         {
             inputStream.read((char *)input.data(), input.capacity());
-            auto size = inputStream.gcount();
-            if (size == 0)
+            auto bytesRead = inputStream.gcount();
+            if (bytesRead == 0)
                 break;
-            bytesEncoded += size;
+            bytesEncoded += bytesRead;
             if (numThreads == 1)
-                encode_block(input.data(), input.data() + size, outStream);
+                encode_block<T>(input.data(), input.data() + bytesRead, outStream, useBwt);
             else
-                encode_block(input.data(), input.data() + size, outStream, numThreads);
+                encode_block<T>(input.data(), input.data() + bytesRead, outStream, numThreads, useBwt);
         }
         auto finishTime = std::chrono::system_clock::now();
         auto elapsedOverallEncode = std::chrono::duration_cast<std::chrono::milliseconds>(finishTime - startTime).count();
@@ -425,8 +484,10 @@ std::int32_t main
     if ((argCount < 4) || (strlen(argValue[1]) != 1))
         return print_usage();
 
+    std::uint32_t symbolWidth = 8;
     std::size_t numThreads = 0;
     std::size_t maxBlockSize = (1 << 30);
+    bool useBwt = true;
     for (auto argIndex = 4; argIndex < argCount; ++argIndex)
     {
         if (argValue[argIndex][0] != '-')
@@ -434,6 +495,13 @@ std::int32_t main
 
         switch (argValue[argIndex][1])
         {
+            case 'd':
+            {
+                //disable bwt
+                useBwt = false;
+                break;
+            }
+
             case 'b':
             {
                 // block size
@@ -453,6 +521,31 @@ std::int32_t main
                 }
                 if (maxBlockSize > (1 << 30))
                     maxBlockSize = (1 << 30);
+                break;
+            }
+            case 'w':
+            {
+                // symbol width
+                symbolWidth = 0;
+                auto cur = argValue[argIndex] + 2;
+                while (*cur != 0)
+                {
+                    if ((*cur < '0') || (*cur > '9'))
+                    {
+                        std::cout << "invalid symbol width" << std::endl;
+                        print_usage();
+                        return -1;
+                    }
+                    symbolWidth *= 10;
+                    symbolWidth += (*cur - '0');
+                    ++cur;
+                }
+                if ((symbolWidth != 8) && (symbolWidth != 16))
+                {
+                    std::cout << "invalid symbol width. must be 8 or 16\n";
+                    print_usage();
+                    return -1;
+                }
                 break;
             }
             case 't':
@@ -488,7 +581,27 @@ std::int32_t main
     {
         case 'e':
         {
-            encode(argValue[2], argValue[3], numThreads, maxBlockSize);
+            switch (symbolWidth)
+            {
+                case 8:
+                {
+                    encode<std::uint8_t>(argValue[2], argValue[3], numThreads, maxBlockSize, useBwt);
+                    break;
+                }
+            
+                case 16:
+                {
+                    encode<std::uint16_t>(argValue[2], argValue[3], numThreads, maxBlockSize, useBwt);
+                    break;
+                }
+
+                default:
+                {
+                    std::cout << "invalid symbol width. must be 8 or 16\n";
+                    print_usage();
+                    break;
+                }
+            }
             break;
         }
 
